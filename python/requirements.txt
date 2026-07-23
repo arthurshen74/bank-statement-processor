@@ -1,0 +1,11 @@
+# Web Framework
+flask==3.0.0
+flask-cors==4.0.0
+werkzeug==3.0.1
+python-dotenv==1.2.1
+
+# PDF and Image Processing
+pdfplumber==0.11.7
+
+# MongoDB
+pymongo==4.6.1

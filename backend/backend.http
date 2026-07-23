@@ -1,0 +1,52 @@
+@backend_HostAddress = http://localhost:5201
+
+GET {{backend_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
+
+# Transaction Reports - Create Manual Transaction
+POST {{backend_HostAddress}}/api/transaction-reports/transactions/manual
+Content-Type: application/json
+
+{
+  "reportId": "REPLACE_WITH_REPORT_ID",
+  "date": "2024-01-15",
+  "name": "Test Manual Transaction",
+  "description": "This is a manually added transaction",
+  "amount": -50.00,
+  "category": "Office Supplies"
+}
+
+###
+
+# Transaction Reports - Update Transaction
+PATCH {{backend_HostAddress}}/api/transaction-reports/transactions/REPLACE_WITH_TRANSACTION_ID
+Content-Type: application/json
+
+{
+  "amount": -75.50,
+  "description": "Updated description for transaction"
+}
+
+###
+
+# Transaction Reports - Update Transaction (Amount Only)
+PATCH {{backend_HostAddress}}/api/transaction-reports/transactions/REPLACE_WITH_TRANSACTION_ID
+Content-Type: application/json
+
+{
+  "amount": -100.00
+}
+
+###
+
+# Transaction Reports - Update Transaction (Description Only)
+PATCH {{backend_HostAddress}}/api/transaction-reports/transactions/REPLACE_WITH_TRANSACTION_ID
+Content-Type: application/json
+
+{
+  "description": "New description only"
+}
+
+###

@@ -1,0 +1,63 @@
+# Build output
+[Dd]ebug/
+[Rr]elease/
+[Bb]in/
+[Oo]bj/
+[Ll]ogs/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Visual Studio Code
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# NuGet
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+
+# .NET
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# macOS
+.DS_Store
+
+# User secrets and local settings
+appsettings.Development.json
+appsettings.Local.json
+appsettings.*.user.json
+secrets.json
+init-user-secrets.sh
+
+# Azure Functions (if applicable)
+local.settings.json
+
+# Database files (if using LocalDB/SQLite)
+*.mdf
+*.ldf
+*.ndf
+*.db
+*.db-shm
+*.db-wal
+
+# Test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# Keys
+*.pem
+*.key
+*.pfx
