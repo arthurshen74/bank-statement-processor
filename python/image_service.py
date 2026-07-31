@@ -74,6 +74,48 @@ class ImageService:
 
         return filename, full_path, url_path
 
+    def purge_static_folder(self) -> tuple[int, int]:
+        """
+        Delete every generated image left in the static folder
+
+        The static folder is a staging area, not a repository: images are written
+        here only so they can be streamed into GridFS, and are removed immediately
+        afterwards. Anything still present is an orphan from a run that failed
+        before its GridFS upload completed. Nothing reads these files back — the
+        webapp loads page images from GridFS by file id.
+
+        Returns:
+            Tuple of (files_removed, bytes_freed)
+        """
+        count = 0
+        freed = 0
+
+        try:
+            entries = os.listdir(self.static_folder)
+        except OSError as e:
+            logger.warning(f'Could not list static folder {self.static_folder}: {e}')
+            return 0, 0
+
+        for name in entries:
+            if not name.lower().endswith('.png'):
+                continue
+
+            path = os.path.join(self.static_folder, name)
+            try:
+                size = os.path.getsize(path)
+                os.remove(path)
+                count += 1
+                freed += size
+            except OSError as e:
+                logger.warning(f'Could not remove staging file {path}: {e}')
+
+        if count:
+            logger.info(f'Purged {count} staging images from {self.static_folder} ({freed / 1024 / 1024:.1f} MB)')
+        else:
+            logger.info(f'No staging images to purge in {self.static_folder}')
+
+        return count, freed
+
     def _report_error(self, error_message: str):
         """
         Report error via callback or logger

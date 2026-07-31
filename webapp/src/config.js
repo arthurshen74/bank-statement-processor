@@ -43,9 +43,12 @@ export async function loadConfig() {
     })
     .catch(error => {
       console.error('Error loading configuration:', error);
-      // Fallback to default configuration
+      // Fallback to default configuration. Both URLs must be present: the
+      // ingest pages read pythonApiBaseUrl directly, and omitting it here
+      // silently builds request URLs against "undefined".
       config = {
-        apiBaseUrl: 'http://localhost:5201/api'
+        apiBaseUrl: 'http://localhost:5201/api',
+        pythonApiBaseUrl: 'http://localhost:5001/api'
       };
       configPromise = null;
       return config;

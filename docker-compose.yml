@@ -1,13 +1,103 @@
-version: '3.8'
-
 services:
+  # Pinned to 8.0 to match the data already in the mongodb_data volume; mongod
+  # refuses to start against a data directory written by a newer release, so do
+  # not lower this pin.
   mongodb:
-    image: mongo:latest
-    container_name: mongodb
+    image: mongo:8.0
+    container_name: bsp-mongodb
+    restart: unless-stopped
     ports:
-      - '27017:27017'
+      - '${MONGO_PORT:-27017}:27017'
     volumes:
       - mongodb_data:/data/db
+    networks:
+      - app-network
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  python:
+    build: ./python
+    container_name: bsp-python
+    restart: unless-stopped
+    ports:
+      - '${PYTHON_PORT:-5001}:${PYTHON_PORT:-5001}'
+    environment:
+      MONGO_URI: ${MONGO_URI}
+      MONGO_DATABASE: ${MONGO_DATABASE}
+      PYTHON_PORT: ${PYTHON_PORT:-5001}
+      PURGE_STATIC_ON_STARTUP: ${PURGE_STATIC_ON_STARTUP:-true}
+    volumes:
+      - ./python:/app
+      # Staging area for page images in flight to GridFS, and raw uploads.
+      # Bind-mounted so they never enter the image and stay inspectable.
+      - ./python/static:/app/static
+      - ./python/uploads:/app/uploads
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  backend:
+    build: ./backend
+    container_name: bsp-backend
+    restart: unless-stopped
+    ports:
+      - '${BACKEND_PORT:-5201}:${BACKEND_PORT:-5201}'
+    environment:
+      # Development gates both UseCors() and MapOpenApi() in Program.cs.
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:${BACKEND_PORT:-5201}
+      # ASP.NET Core maps __ to the ':' config separator, so these replace every
+      # value that previously came from dotnet user-secrets.
+      MongoDB__ConnectionString: ${MONGO_URI}
+      MongoDB__DatabaseName: ${MONGO_DATABASE}
+      Jwt__Issuer: ${JWT_ISSUER}
+      Jwt__Audience: ${JWT_AUDIENCE}
+      Jwt__PrivateKeyPath: ${JWT_PRIVATE_KEY_PATH}
+      Jwt__PublicKeyPath: ${JWT_PUBLIC_KEY_PATH}
+      Cors__AllowedOrigins__0: http://localhost:${WEBAPP_PORT:-5173}
+      Llm__BaseUrl: ${LLM_BASE_URL}
+      Llm__Model: ${LLM_MODEL}
+      Llm__ApiKey: ${LLM_API_KEY}
+      Llm__Temperature: ${LLM_TEMPERATURE:-0.0}
+      Llm__MaxOutputTokens: ${LLM_MAX_OUTPUT_TOKENS:-1000}
+      Llm__TimeoutSeconds: ${LLM_TIMEOUT_SECONDS:-120}
+    volumes:
+      - ./backend:/src
+      # Anonymous volumes masking the host's build output. Host obj/ references
+      # ~/.nuget paths that do not exist in the container; letting it shadow the
+      # image's restore produces confusing missing-assembly errors.
+      - /src/bin
+      - /src/obj
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  webapp:
+    build: ./webapp
+    container_name: bsp-webapp
+    restart: unless-stopped
+    ports:
+      - '${WEBAPP_PORT:-5173}:${WEBAPP_PORT:-5173}'
+    environment:
+      WEBAPP_PORT: ${WEBAPP_PORT:-5173}
+      # Resolved by the browser, not container-to-container, so localhost is
+      # correct here. Derived from the port vars so a port is stated once.
+      API_BASE_URL: ${API_BASE_URL:-http://localhost:${BACKEND_PORT:-5201}/api}
+      PYTHON_API_BASE_URL: ${PYTHON_API_BASE_URL:-http://localhost:${PYTHON_PORT:-5001}/api}
+    volumes:
+      - ./webapp:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+      - python
     networks:
       - app-network
 

@@ -1,0 +1,25 @@
+# Staging/generated data — bind-mounted at runtime, never baked into the image
+static/
+uploads/
+data/
+debug/
+
+# Virtualenvs
+venv/
+env/
+ENV/
+.venv/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.so
+
+# Secrets
+.env
+.env.*
+
+# Misc
+*.log
+.pytest_cache/
+.DS_Store

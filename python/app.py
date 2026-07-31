@@ -62,6 +62,34 @@ statement_repository = StatementRepository()
 # Initialize logger
 logger = get_logger(__name__)
 
+def _store_page_image(url_path: Optional[str], metadata: Dict) -> Optional[str]:
+    """
+    Upload a staged page image to GridFS and always remove the staging file.
+
+    The removal is in a finally block on purpose: when the GridFS write raises,
+    the caller still needs the staging file gone, otherwise every failed ingest
+    leaks a PNG into the static folder.
+
+    Args:
+        url_path: '/static/<name>.png' as returned by ImageService, or None
+        metadata: Metadata to attach to the GridFS file
+
+    Returns:
+        ObjectId of the stored file, or None if url_path was None
+    """
+    if not url_path:
+        return None
+
+    path = os.path.join(STATIC_FOLDER, url_path.split('/')[-1])
+    try:
+        return statement_repository.save_image_to_gridfs(path, metadata=metadata)
+    finally:
+        try:
+            os.remove(path)
+        except OSError as e:
+            logger.warning(f'Failed to remove staging file {path}: {e}')
+
+
 @app.route('/')
 def index():
     """Serve the React app"""
@@ -126,42 +154,27 @@ def process_pdflib_pdf():
 
                 # Save images to GridFS
                 try:
-                    # Full page image path
-                    if full_page_url:
-                        full_page_path = os.path.join(STATIC_FOLDER, full_page_url.split('/')[-1])
-                        full_page_oid = statement_repository.save_image_to_gridfs(
-                            full_page_path,
-                            metadata={
-                                'filename': filename,
-                                'pageNumber': page_num,
-                                'imageType': 'full'
-                            }
-                        )
-                        # Delete the static file after successful GridFS upload
-                        try:
-                            os.remove(full_page_path)
-                        except Exception as del_error:
-                            logger.warning(f'Failed to delete static file {full_page_path}: {del_error}')
-                    else:
-                        raise ValueError("Full page URL is None")
+                    # Always stage the cropped image out first: if the full page
+                    # upload fails the cropped file must still be cleaned up.
+                    cropped_page_oid = _store_page_image(
+                        cropped_image_url,
+                        metadata={
+                            'filename': filename,
+                            'pageNumber': page_num,
+                            'imageType': 'cropped'
+                        }
+                    )
 
-                    # Cropped image path
-                    cropped_page_oid = None
-                    if cropped_image_url:
-                        cropped_page_path = os.path.join(STATIC_FOLDER, cropped_image_url.split('/')[-1])
-                        cropped_page_oid = statement_repository.save_image_to_gridfs(
-                            cropped_page_path,
-                            metadata={
-                                'filename': filename,
-                                'pageNumber': page_num,
-                                'imageType': 'cropped'
-                            }
-                        )
-                        # Delete the static file after successful GridFS upload
-                        try:
-                            os.remove(cropped_page_path)
-                        except Exception as del_error:
-                            logger.warning(f'Failed to delete static file {cropped_page_path}: {del_error}')
+                    full_page_oid = _store_page_image(
+                        full_page_url,
+                        metadata={
+                            'filename': filename,
+                            'pageNumber': page_num,
+                            'imageType': 'full'
+                        }
+                    )
+                    if full_page_oid is None:
+                        raise ValueError("Full page URL is None")
 
                     # Store ObjectIds for normalization
                     image_object_ids.append({
@@ -416,29 +429,22 @@ def process_creditcard_pdftotext():
 
                     # Save image to GridFS
                     try:
-                        if image_url:
-                            image_path = os.path.join(STATIC_FOLDER, image_url.split('/')[-1])
-                            image_oid = statement_repository.save_image_to_gridfs(
-                                image_path,
-                                metadata={
-                                    'filename': filename,
-                                    'pageNumber': page_num,
-                                    'imageType': 'full'
-                                }
-                            )
-                            # Delete the static file after successful GridFS upload
-                            try:
-                                os.remove(image_path)
-                            except Exception as del_error:
-                                logger.warning(f'Failed to delete static file {image_path}: {del_error}')
-
-                            # Store ObjectId for normalization
-                            image_object_ids.append({
+                        image_oid = _store_page_image(
+                            image_url,
+                            metadata={
+                                'filename': filename,
                                 'pageNumber': page_num,
-                                'imageId': image_oid
-                            })
-                        else:
+                                'imageType': 'full'
+                            }
+                        )
+                        if image_oid is None:
                             raise ValueError("Image URL is None")
+
+                        # Store ObjectId for normalization
+                        image_object_ids.append({
+                            'pageNumber': page_num,
+                            'imageId': image_oid
+                        })
 
                     except Exception as img_error:
                         sse_queue.add_warning(f'Failed to save image to GridFS for page {page_num}: {str(img_error)}')
@@ -635,4 +641,13 @@ def health_check():
     return jsonify({'status': 'healthy'})
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    # The static folder only ever holds images in flight to GridFS, so anything
+    # still there is an orphan from a run that failed mid-upload. Sweep it once,
+    # in the reloader's parent process: the child re-executes this file on every
+    # code change, and purging there would delete another request's in-flight
+    # staging file whenever a hot reload landed during an ingest.
+    if os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
+        if os.getenv('PURGE_STATIC_ON_STARTUP', 'true').lower() not in ('false', '0', 'no'):
+            image_service.purge_static_folder()
+
+    app.run(debug=True, host='0.0.0.0', port=int(os.getenv('PYTHON_PORT', '5001')))

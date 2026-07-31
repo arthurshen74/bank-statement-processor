@@ -10,16 +10,7 @@ export default defineConfig({
     outDir: path.resolve(__dirname, '../backend/wwwroot'),
     emptyOutDir: true,
   },
-  server: {
-    proxy: {
-      '/static': {
-        target: 'http://localhost:5001',
-        changeOrigin: true
-      },
-      '/api': {
-        target: 'http://localhost:5001',
-        changeOrigin: true
-      }
-    }
-  }
+  // No dev proxy: the API client builds absolute URLs from public/config.json
+  // (see src/api/client.js), and page images are served from GridFS through the
+  // authenticated C# API rather than from the Python service's /static route.
 });

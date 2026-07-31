@@ -1,0 +1,4 @@
+{
+  "apiBaseUrl": "${API_BASE_URL}",
+  "pythonApiBaseUrl": "${PYTHON_API_BASE_URL}"
+}

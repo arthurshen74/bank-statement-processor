@@ -1,0 +1,18 @@
+# Installed in the image; a macOS-native node_modules must never leak in
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+.vite/
+
+# Generated at container start by docker-entrypoint.sh
+public/config.json
+
+# Secrets
+.env.local
+.env.*.local
+
+# Misc
+*.log
+.DS_Store

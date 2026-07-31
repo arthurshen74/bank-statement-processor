@@ -102,12 +102,23 @@ builder.Services.AddAuthorization(options =>
         policy.RequireRole(Roles.Admin));
 });
 
-// Add CORS (only needed for development when using Vite dev server)
+// Add CORS (only needed for development when using Vite dev server).
+// Origins come from configuration so the webapp port can be changed without a
+// rebuild; the historical default is kept as the fallback.
+var allowedOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>();
+
+if (allowedOrigins is null || allowedOrigins.Length == 0)
+{
+    allowedOrigins = new[] { "http://localhost:5173" };
+}
+
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins("http://localhost:5173")
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyMethod()
               .AllowAnyHeader();
     });

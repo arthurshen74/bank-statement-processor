@@ -1,0 +1,22 @@
+# Host build output — masked by anonymous volumes at runtime; host artifacts
+# reference ~/.nuget paths that do not exist in the container.
+bin/
+obj/
+
+# Vite build output, produced by the webapp not the backend
+wwwroot/
+
+# Secrets — the PEMs arrive via bind mount at runtime, never in an image layer
+*.pem
+init-user-secrets.sh
+.env
+.env.*
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# Misc
+*.log
+.DS_Store

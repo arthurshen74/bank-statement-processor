@@ -63,10 +63,18 @@ vite.config.js.timestamp-*
 .classpath
 .settings/
 
-# Environment variables
+# Environment variables — all real ports/secrets live in the root .env
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+# Feature-flag files carry no secrets and are meant to be shared
+!webapp/.env.development
+!webapp/.env.production
+
+# Secrets and generated config
+backend/init-user-secrets.sh
+webapp/public/config.json
+!webapp/public/config.json.template
 
 # Build outputs (if different paths)
 /build

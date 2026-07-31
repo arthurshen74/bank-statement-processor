@@ -36,7 +36,7 @@ Extraction is in Python because the PDF tooling (pdfplumber, poppler) lives ther
 
 An ASP.NET Core minimal API that owns everything after extraction: browsing extracted statements, reports, categorization, and user management. Auth is JWT with an RSA keypair and three roles (Admin, ReadWrite, ReadOnly).
 
-Reports are the working surface: transactions are copied from statements into a report and edited there, so the original extraction stays untouched. Categorization is rule-based. A category rule holds one or more regex patterns and a priority; enabled rules are evaluated in priority order against a transaction's Buchungstext, and the first match wins. Rules are written by hand, or a pattern can be suggested from a sample Buchungstext via the OpenAI API (prompt in `backend/derivePatternPrompt.md`, optional, requires an API key). Whatever the rules miss is assigned manually, with bulk assignment and pattern-based "find similar transactions" to make that less tedious. Naming rules work the same way for turning raw merchant strings into readable names. Receipts (PDF or image) can be attached to transactions and are stored in GridFS.
+Reports are the working surface: transactions are copied from statements into a report and edited there, so the original extraction stays untouched. Categorization is rule-based. A category rule holds one or more regex patterns and a priority; enabled rules are evaluated in priority order against a transaction's Buchungstext, and the first match wins. Rules are written by hand, or a pattern can be suggested from a sample Buchungstext by a language model (prompt in `backend/derivePatternPrompt.md`, optional, configured via `LLM_*` in `.env`). Whatever the rules miss is assigned manually, with bulk assignment and pattern-based "find similar transactions" to make that less tedious. Naming rules work the same way for turning raw merchant strings into readable names. Receipts (PDF or image) can be attached to transactions and are stored in GridFS.
 
 ### Webapp (`webapp/`)
 
@@ -48,64 +48,41 @@ React 19 with Vite and Tailwind. The ingest pages talk directly to the Python se
 - C# / .NET 9, ASP.NET Core minimal APIs, MongoDB C# driver, BCrypt.Net
 - React 19, Vite, Tailwind CSS 4
 - MongoDB, with GridFS for page images and receipts
-- docker-compose (MongoDB only; the services run on the host)
-- OpenAI API (optional, only for suggesting regex patterns)
+- Docker Compose (all four services; hot reload via bind mounts)
+- Any server speaking the OpenAI Responses API — OpenAI or a local runner such as LM Studio (optional, only for suggesting regex patterns)
 
 ## Running it
 
-Prerequisites: Docker, .NET 9 SDK, Python 3.11, Node.js, and poppler (`brew install poppler` on macOS, `apt install poppler-utils` on Debian/Ubuntu).
+Prerequisites: Docker. Everything else — .NET 9, Python 3.11, Node, poppler — lives in the images.
 
-### 1. MongoDB
-
-```
-docker-compose up -d
-```
-
-This starts only MongoDB (localhost:27017). The three services are run on the host, not in containers.
-
-### 2. Python extraction service
+### 1. Configure
 
 ```
-cd python
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+cp .env.example .env
 ```
 
-Create `python/.env` based on the root `.env.example`:
+Every port and secret the stack uses lives in that one file. Changing a port there is enough: the compose port mappings, the C# CORS policy, the Flask bind port, and the webapp's generated `public/config.json` are all derived from it.
 
-```
-MONGO_URI=mongodb://localhost:27017
-MONGO_DATABASE=bankstatements
-```
-
-Set `MONGO_DATABASE` explicitly and use the same name in the backend configuration below. The Python service falls back to a different database name when unset, and if the two services point at different databases the backend will simply show no statements.
-
-```
-python app.py   # listens on :5001
-```
-
-### 3. C# API
-
-Generate an RSA keypair for JWT signing:
+Generate an RSA keypair for JWT signing (once):
 
 ```
 openssl genrsa -out backend/jwt-private-key.pem 2048
 openssl rsa -in backend/jwt-private-key.pem -pubout -out backend/jwt-public-key.pem
 ```
 
-Configure via dotnet user-secrets (or fill in `appsettings.json`, but the keys and connection string do not belong in a tracked file):
+The `LLM_*` block is optional — see [Pattern suggestions](#pattern-suggestions) below.
+
+### 2. Run
 
 ```
-cd backend
-dotnet user-secrets set "MongoDB:ConnectionString" "mongodb://localhost:27017"
-dotnet user-secrets set "MongoDB:DatabaseName" "bankstatements"
-dotnet user-secrets set "Jwt:PrivateKeyPath" "<absolute path to jwt-private-key.pem>"
-dotnet user-secrets set "Jwt:PublicKeyPath" "<absolute path to jwt-public-key.pem>"
-dotnet user-secrets set "OPENAI_API_KEY" "<optional, only for pattern suggestions>"
-dotnet run   # listens on :5201
+docker compose up -d
 ```
 
-### 4. First user
+Four containers: MongoDB (:27017), the Python extraction service (:5001), the C# API (:5201), and the webapp (:5173). All three services bind-mount their source from the host, so edits hot-reload — Vite HMR, the Flask reloader, and `dotnet watch` respectively. Open http://localhost:5173.
+
+Only MongoDB holds state, in the `mongodb_data` volume.
+
+### 3. First user
 
 There is no registration endpoint and no seeding: user management requires an Admin token, which means the first admin has to be inserted into MongoDB by hand. Generate a BCrypt hash of your chosen password (any BCrypt tool works, for example `pip install bcrypt` and):
 
@@ -132,15 +109,22 @@ db.users.insertOne({
 })'
 ```
 
-### 5. Webapp
+### Pattern suggestions
+
+Optional. The only place a language model is used is the "auto-generate" button that suggests a regex for a category or naming rule from a sample Buchungstext (prompt in `backend/derivePatternPrompt.md`). Extraction and categorization are entirely deterministic and unaffected — with `LLM_*` unset, that one button reports an error and everything else works.
+
+It speaks the OpenAI Responses API, so it points at either OpenAI or a local runner:
 
 ```
-cd webapp
-npm install
-npm run dev   # :5173
+LLM_BASE_URL=https://api.openai.com/v1     LLM_MODEL=gpt-4.1-2025-04-14
+LLM_BASE_URL=http://<lan-ip>:3000/v1       LLM_MODEL=qwen/qwen3.6-35b-a3b
 ```
 
-API base URLs are read at runtime from `webapp/public/config.json` (defaults: C# API on :5201, Python service on :5001).
+For LM Studio, enable "Serve on Local Network" and use the machine's LAN address — `localhost` inside a container is the container, not your Mac.
+
+### Running services on the host instead
+
+The containers are the supported path, but nothing stops you running a service directly: install its toolchain (.NET 9 SDK, Python 3.11, Node, and poppler via `brew install poppler`), `docker compose stop <service>`, and point the equivalent environment variables at `localhost` instead of the compose service names.
 
 ## What it does not do
 
