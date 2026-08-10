@@ -18,6 +18,10 @@ export default function EuerReportDialog({
   reportName,
 }) {
   const [reportTitle, setReportTitle] = useState('');
+  const [creditsLabel, setCreditsLabel] = useState('');
+  const [paymentsLabel, setPaymentsLabel] = useState('');
+  const [surplusLabel, setSurplusLabel] = useState('');
+  const [fileName, setFileName] = useState('');
   const { categories, loading } = useCategories();
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
@@ -25,9 +29,13 @@ export default function EuerReportDialog({
   useEffect(() => {
     if (isOpen) {
       setReportTitle('Einnahme-Überschuss-Rechnung');
+      setCreditsLabel('Einnahme');
+      setPaymentsLabel('Betriebsausgaben');
+      setSurplusLabel('Überschuss');
+      setFileName(`${reportName}_EÜR`);
       setError(null);
     }
-  }, [isOpen]);
+  }, [isOpen, reportName]);
 
   // Calculate preview stats
   const stats = useMemo(() => {
@@ -61,6 +69,26 @@ export default function EuerReportDialog({
       return;
     }
 
+    if (stats.einnahme > 0 && !creditsLabel.trim()) {
+      setError('Bitte geben Sie eine Überschrift für Einnahmen ein');
+      return;
+    }
+
+    if (stats.ausgaben > 0 && !paymentsLabel.trim()) {
+      setError('Bitte geben Sie eine Überschrift für Ausgaben ein');
+      return;
+    }
+
+    if (stats.einnahme > 0 && stats.ausgaben > 0 && !surplusLabel.trim()) {
+      setError('Bitte geben Sie eine Überschrift für den Überschuss ein');
+      return;
+    }
+
+    if (!fileName.trim()) {
+      setError('Bitte geben Sie einen Dateinamen ein');
+      return;
+    }
+
     try {
       setGenerating(true);
       setError(null);
@@ -68,7 +96,13 @@ export default function EuerReportDialog({
         transactions,
         categories,
         reportTitle.trim(),
-        reportName
+        reportName,
+        {
+          creditsLabel: creditsLabel.trim(),
+          paymentsLabel: paymentsLabel.trim(),
+          surplusLabel: surplusLabel.trim(),
+          fileName: fileName.trim(),
+        }
       );
       onClose();
     } catch (err) {
@@ -106,6 +140,71 @@ export default function EuerReportDialog({
               placeholder="Einnahme-Überschuss-Rechnung"
               className="w-full"
             />
+          </div>
+
+          {/* Credits Label Input — only when there are credit transactions */}
+          {!loading && stats.einnahme > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-900 mb-2">
+                Überschrift für Einnahmen (Label for Credits)
+              </label>
+              <Input
+                type="text"
+                value={creditsLabel}
+                onChange={(e) => setCreditsLabel(e.target.value)}
+                placeholder="Einnahme"
+                className="w-full"
+              />
+            </div>
+          )}
+
+          {/* Payments Label Input — only when there are payment transactions */}
+          {!loading && stats.ausgaben > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-900 mb-2">
+                Überschrift für Ausgaben (Label for Payments)
+              </label>
+              <Input
+                type="text"
+                value={paymentsLabel}
+                onChange={(e) => setPaymentsLabel(e.target.value)}
+                placeholder="Betriebsausgaben"
+                className="w-full"
+              />
+            </div>
+          )}
+
+          {/* Surplus Label Input — only when both groups have transactions */}
+          {!loading && stats.einnahme > 0 && stats.ausgaben > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-900 mb-2">
+                Überschrift für Überschuss (Label for Surplus)
+              </label>
+              <Input
+                type="text"
+                value={surplusLabel}
+                onChange={(e) => setSurplusLabel(e.target.value)}
+                placeholder="Überschuss"
+                className="w-full"
+              />
+            </div>
+          )}
+
+          {/* Filename Input */}
+          <div>
+            <label className="block text-sm font-medium text-gray-900 mb-2">
+              Dateiname
+            </label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="text"
+                value={fileName}
+                onChange={(e) => setFileName(e.target.value)}
+                placeholder={`${reportName}_EÜR`}
+                className="w-full"
+              />
+              <span className="text-sm text-gray-500">.pdf</span>
+            </div>
           </div>
 
           {/* Preview Stats */}

@@ -1,6 +1,17 @@
 import jsPDF from 'jspdf';
 
-export const generateEuerPdf = async (transactions, categories, reportTitle, reportName) => {
+export const generateEuerPdf = async (
+    transactions,
+    categories,
+    reportTitle,
+    reportName,
+    {
+        creditsLabel = 'Einnahme',
+        paymentsLabel = 'Betriebsausgaben',
+        surplusLabel = 'Überschuss',
+        fileName,
+    } = {}
+) => {
     // Filter valid transactions (must have both category and name)
     const validTransactions = transactions.filter(
         (t) => t.category && t.name && t.name.trim() !== ''
@@ -19,7 +30,7 @@ export const generateEuerPdf = async (transactions, categories, reportTitle, rep
         return acc;
     }, {});
 
-    // Separate into Einnahme and Betriebsausgaben based on CategoryType
+    // Separate into credits (Einnahme) and payments (Ausgaben) based on CategoryType
     const einnahmeCategories = [];
     const ausgabenCategories = [];
 
@@ -91,153 +102,102 @@ export const generateEuerPdf = async (transactions, categories, reportTitle, rep
         }
     };
 
+    const renderSection = (label, sectionCategories, sectionTotal) => {
+        // Section heading
+        checkPageBreak(20);
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text(label.toUpperCase(), margin, yPos);
+        yPos += 8;
+
+        sectionCategories.forEach((category) => {
+            checkPageBreak(50);
+
+            // Category name
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'bold');
+            doc.text(category.name, margin + 5, yPos);
+            yPos += 6;
+
+            // Transactions
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+
+            category.transactions.forEach((transaction) => {
+                checkPageBreak(10);
+
+                const date = formatDate(transaction.date);
+                const name = transaction.name || '';
+                const betrag = formatCurrency(Math.abs(transaction.amount));
+
+                doc.text(date, margin + 10, yPos);
+                doc.text(name, margin + 35, yPos, { maxWidth: contentWidth - 80 });
+                doc.text(betrag, pageWidth - margin, yPos, { align: 'right' });
+                yPos += 5;
+            });
+
+            // Category subtotal
+            const categoryTotal = calculateCategoryTotal(category);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Summe:', margin + 10, yPos);
+            doc.text(formatCurrency(categoryTotal), pageWidth - margin, yPos, {
+                align: 'right',
+            });
+            yPos += 8;
+            doc.setFont('helvetica', 'normal');
+        });
+
+        // Section total
+        checkPageBreak(15);
+        yPos += 3;
+        doc.setDrawColor(0);
+        doc.line(margin, yPos, pageWidth - margin, yPos);
+        yPos += 6;
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Total ${label}:`, margin + 5, yPos);
+        doc.text(formatCurrency(sectionTotal), pageWidth - margin, yPos, {
+            align: 'right',
+        });
+        yPos += 15;
+    };
+
     // Title
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
     doc.text(reportTitle || 'Einnahme-Überschuss-Rechnung', margin, yPos);
     yPos += 15;
 
-    // EINNAHME Section
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('EINNAHME', margin, yPos);
-    yPos += 8;
+    const hasEinnahme = einnahmeCategories.length > 0;
+    const hasAusgaben = ausgabenCategories.length > 0;
 
-    if (einnahmeCategories.length === 0) {
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        doc.text('Keine Einnahmen', margin + 5, yPos);
-        yPos += 10;
-    } else {
-        einnahmeCategories.forEach((category) => {
-            checkPageBreak(50);
-
-            // Category name
-            doc.setFontSize(11);
-            doc.setFont('helvetica', 'bold');
-            doc.text(category.name, margin + 5, yPos);
-            yPos += 6;
-
-            // Transactions
-            doc.setFontSize(9);
-            doc.setFont('helvetica', 'normal');
-
-            category.transactions.forEach((transaction) => {
-                checkPageBreak(10);
-
-                const date = formatDate(transaction.date);
-                const name = transaction.name || '';
-                const betrag = formatCurrency(Math.abs(transaction.amount));
-
-                doc.text(date, margin + 10, yPos);
-                doc.text(name, margin + 35, yPos, { maxWidth: contentWidth - 80 });
-                doc.text(betrag, pageWidth - margin, yPos, { align: 'right' });
-                yPos += 5;
-            });
-
-            // Category subtotal
-            const categoryTotal = calculateCategoryTotal(category);
-            doc.setFont('helvetica', 'bold');
-            doc.text('Summe:', margin + 10, yPos);
-            doc.text(formatCurrency(categoryTotal), pageWidth - margin, yPos, {
-                align: 'right',
-            });
-            yPos += 8;
-            doc.setFont('helvetica', 'normal');
-        });
+    if (hasEinnahme) {
+        renderSection(creditsLabel, einnahmeCategories, totalEinnahme);
     }
 
-    // Total Einnahme
-    checkPageBreak(15);
-    yPos += 3;
-    doc.setDrawColor(0);
-    doc.line(margin, yPos, pageWidth - margin, yPos);
-    yPos += 6;
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Gesamt Einnahme:', margin + 5, yPos);
-    doc.text(formatCurrency(totalEinnahme), pageWidth - margin, yPos, {
-        align: 'right',
-    });
-    yPos += 15;
-
-    // BETRIEBSAUSGABEN Section
-    checkPageBreak(20);
-    doc.setFontSize(14);
-    doc.text('BETRIEBSAUSGABEN', margin, yPos);
-    yPos += 8;
-
-    if (ausgabenCategories.length === 0) {
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        doc.text('Keine Betriebsausgaben', margin + 5, yPos);
-        yPos += 10;
-    } else {
-        ausgabenCategories.forEach((category) => {
-            checkPageBreak(50);
-
-            // Category name
-            doc.setFontSize(11);
-            doc.setFont('helvetica', 'bold');
-            doc.text(category.name, margin + 5, yPos);
-            yPos += 6;
-
-            // Transactions
-            doc.setFontSize(9);
-            doc.setFont('helvetica', 'normal');
-
-            category.transactions.forEach((transaction) => {
-                checkPageBreak(10);
-
-                const date = formatDate(transaction.date);
-                const name = transaction.name || '';
-                const betrag = formatCurrency(Math.abs(transaction.amount));
-
-                doc.text(date, margin + 10, yPos);
-                doc.text(name, margin + 35, yPos, { maxWidth: contentWidth - 80 });
-                doc.text(betrag, pageWidth - margin, yPos, { align: 'right' });
-                yPos += 5;
-            });
-
-            // Category subtotal
-            const categoryTotal = calculateCategoryTotal(category);
-            doc.setFont('helvetica', 'bold');
-            doc.text('Summe:', margin + 10, yPos);
-            doc.text(formatCurrency(categoryTotal), pageWidth - margin, yPos, {
-                align: 'right',
-            });
-            yPos += 8;
-            doc.setFont('helvetica', 'normal');
-        });
+    if (hasAusgaben) {
+        renderSection(paymentsLabel, ausgabenCategories, totalAusgaben);
     }
 
-    // Total Betriebsausgaben
-    checkPageBreak(15);
-    yPos += 3;
-    doc.setDrawColor(0);
-    doc.line(margin, yPos, pageWidth - margin, yPos);
-    yPos += 6;
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Gesamt Betriebsausgaben:', margin + 5, yPos);
-    doc.text(formatCurrency(totalAusgaben), pageWidth - margin, yPos, {
-        align: 'right',
-    });
-    yPos += 15;
-
-    // Überschuss (Surplus/Deficit)
-    checkPageBreak(20);
-    yPos += 3;
-    doc.line(margin, yPos, pageWidth - margin, yPos);
-    doc.line(margin, yPos + 1, pageWidth - margin, yPos + 1); // Double line
-    yPos += 8;
-    doc.setFontSize(14);
-    doc.text('ÜBERSCHUSS:', margin + 5, yPos);
-    doc.text(formatCurrency(ueberschuss), pageWidth - margin, yPos, {
-        align: 'right',
-    });
+    // Überschuss (Surplus/Deficit) — only meaningful when both sides are present
+    if (hasEinnahme && hasAusgaben) {
+        checkPageBreak(20);
+        yPos += 3;
+        doc.line(margin, yPos, pageWidth - margin, yPos);
+        doc.line(margin, yPos + 1, pageWidth - margin, yPos + 1); // Double line
+        yPos += 8;
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${surplusLabel.toUpperCase()}:`, margin + 5, yPos);
+        doc.text(formatCurrency(ueberschuss), pageWidth - margin, yPos, {
+            align: 'right',
+        });
+    }
 
     // Save PDF
-    const filename = `${reportName}_EÜR.pdf`;
+    const baseName = fileName?.trim() || `${reportName}_EÜR`;
+    const filename = baseName.toLowerCase().endsWith('.pdf')
+        ? baseName
+        : `${baseName}.pdf`;
     doc.save(filename);
 };

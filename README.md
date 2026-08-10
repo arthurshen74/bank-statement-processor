@@ -93,7 +93,7 @@ python3 -c "import bcrypt; print(bcrypt.hashpw(b'your-password-here', bcrypt.gen
 Then insert the user (field names are PascalCase, matching the C# driver's defaults):
 
 ```
-docker exec -it mongodb mongosh bankstatements --eval '
+docker compose exec mongodb mongosh bankstatements --eval '
 db.users.insertOne({
   UserName: "admin",
   FirstName: "Ada",
